@@ -1,0 +1,174 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Nov 26 01:54:19 2020
+
+@author: Sina
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+from pywt import wavedec
+from pywt import dwt_max_level
+from pywt import dwt
+from pywt import threshold_firm
+from pywt import idwt
+from pywt import waverec
+from pywt import threshold
+from scipy.fft import fft
+from scipy import signal
+from scipy.integrate import quad
+
+
+
+def fastFourier(N,T,y):
+    print('y is actually ')
+    print(type(y))
+    # Number of sample points = N
+    # sample spacing = T
+    #sample values = y
+    x = np.linspace(0.0, N*T, N)
+    yf = fft(y)
+    xf = np.linspace(0.0, 1.0/(2.0*T), N//2)
+    plt.subplot(211)
+    plt.plot(xf, 2.0/N * np.abs(yf[0:N//2]))
+    # plt.subplot(212)
+    # plt.plot(y)
+    #centered_data = meanTran(y)
+    # plt.subplot(221)
+    plt.subplot(212)
+    plt.plot(y)
+    plt.grid()
+    plt.show()
+    
+def psd(sig):
+    f, Pxx_den = signal.welch(sig, 1000, nperseg=len(sig))
+    plt.semilogy(f, Pxx_den)
+    #plt.ylim([0.5e-3, 1])
+    plt.xlabel('frequency [Hz]')
+    plt.ylabel('PSD [V**2/Hz]')
+    plt.show()
+    return [f, Pxx_den]
+    
+def band_power(y, lower, higher, dx):
+    xx = np.trapz(y[lower:higher], dx = dx)
+    return xx
+
+
+#https://stackoverflow.com/questions/35565540/designing-an-fir-notch-filter-with-python
+# Required input defintions are as follows;
+# time:   Time between samples
+# band:   The bandwidth around the centerline freqency that you wish to filter
+# freq:   The centerline frequency to be filtered
+# ripple: The maximum passband ripple that is allowed in db
+# order:  The filter order.  For FIR notch filters this is best set to 2 or 3,
+#         IIR filters are best suited for high values of order.  This algorithm
+#         is hard coded to FIR filters
+# filter_type: 'butter', 'bessel', 'cheby1', 'cheby2', 'ellip'
+# data:         the data to be filtered
+def Implement_Notch_Filter(time, band, freq, ripple, order, filter_type, data):
+    from scipy.signal import iirfilter,lfilter
+    fs   = 1/time
+    nyq  = fs/2.0
+    low  = freq - band/2.0
+    high = freq + band/2.0
+    low  = low/nyq
+    high = high/nyq
+    b, a = iirfilter(order, [low, high], rp=ripple, btype='bandstop',
+                     analog=False, ftype=filter_type)
+    filtered_data = lfilter(b, a, data)
+    return filtered_data
+
+def Implement_Bandpass_Filter(time, low, high, ripple, order, filter_type, data):
+    from scipy.signal import iirfilter,lfilter
+    fs   = 1/time
+    nyq  = fs/2.0
+    low  = low/nyq
+    high = high/nyq
+    b, a = iirfilter(order, [low, high], rp=ripple, btype='band',
+                     analog=False, ftype=filter_type)
+    filtered_data = lfilter(b, a, data)
+    return filtered_data
+
+
+#https://stackoverflow.com/questions/39032325/python-high-pass-filter
+def butter_highpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = signal.butter(order, normal_cutoff, btype='high', analog=False)
+    return b, a
+def butter_highpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_highpass(cutoff, fs, order=order)
+    y = signal.filtfilt(b, a, data)
+    return y
+
+def window_bp(sig):
+    pass
+
+
+dt = 1/1000
+npt = 1000
+t = np.linspace(0, dt*npt, npt)
+y = []
+for i in range(200):
+    y.append(np.sin(2*np.pi*50*t[i]))
+for i in range(200, 600):
+    y.append(np.sin(2*np.pi*100*t[i]))
+for i in range(600, 1000):
+    y.append(np.sin(2*np.pi*50*t[i]))
+
+# yfil = []
+# for i in range(1,50):
+#     y[(i-1)*20:i*20] = Implement_Bandpass_Filter(dt, 4, 50, 0.1, 2, 'cheby1', y[(i-1)*20:i*20])
+
+
+
+
+
+#to use dwt for denoising 
+sig = y
+fastFourier(1000,1/1000,sig)
+sig = sig + np.random.normal(0,1,1000)
+sig3 = sig
+fastFourier(1000,1/1000,sig)
+#fastFourier(1000, 1/1000, sig)
+vals1 = psd(list(sig))[1]
+# plt.subplot(211)
+# plt.plot(sig[0:200],'g')
+# plt.title('raw')
+level = dwt_max_level(len(sig),'db5')
+coeffs = wavedec(sig, 'db5', level=level)
+for ii in range(1,len(coeffs)):
+    #coeffs[ii] = threshold(coeffs[ii], value=1, mode='greater')
+    coeffs[ii] = threshold_firm(coeffs[ii], 1, 4)
+sig = waverec(coeffs, 'db5')
+fastFourier(1000,1/1000,sig)
+# plt.subplot(212)
+# plt.plot(sig[0:200],'r')
+# plt.title('filtered')
+#fastFourier(1000, 1/1000, sig)
+
+################
+vals2 = psd(list(sig))[1]
+
+# p50_1 = band_power(vals1, 48, 52, 0.1)
+# p100_1 = band_power(vals1, 98, 102, 0.1)
+# totalP1 = band_power(vals1, 0, len(vals1), 0.1)
+# SNR1 = (p50_1+p100_1)/totalP1
+
+# p50_2 = band_power(vals2, 48, 52, 0.1)
+# p100_2 = band_power(vals2, 98, 102, 0.1)
+# totalP2 = band_power(vals2, 0, len(vals2), 0.1)
+# SNR2 = (p50_2+p100_2)/totalP2
+
+# sig2 = Implement_Bandpass_Filter(1/1000,1,150,0.01,2,'bessel',sig)
+# vals3 = psd(list(sig2))[1]
+# p50_3 = band_power(vals3, 48, 52, 0.1)
+# p100_3 = band_power(vals3, 98, 102, 0.1)
+# totalP3 = band_power(vals3, 0, len(vals3), 0.1)
+# SNR3 = (p50_3+p100_3)/totalP3
+
+# sig4 = Implement_Bandpass_Filter(1/1000,1,150,0.01,2,'bessel',sig3)
+# vals4 = psd(list(sig4))[1]
+# p50_4 = band_power(vals4, 48, 52, 0.1)
+# p100_4 = band_power(vals4, 98, 102, 0.1)
+# totalP4 = band_power(vals4, 0, len(vals4), 0.1)
+# SNR4 = (p50_4+p100_4)/totalP4
